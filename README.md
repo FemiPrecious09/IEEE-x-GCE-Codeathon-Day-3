@@ -1,73 +1,64 @@
-# Notes API + AI Summarization
+# Notes API + AI Summarization ── Day 3
 
-A production-style RESTful Notes API built with Node.js, Express, PostgreSQL, JWT authentication, and Groq LLM integration.
+A production-style RESTful Notes API built with **Node.js**, **Express**, **PostgreSQL**, **JWT authentication**, and **Groq LLM integration**.
 
-Submitted for the IEEE × GitHub Campus Experts Codeathon — Backend Track.
+Built for the IEEE × GitHub Campus Experts Codeathon — Backend Track.
 
-This project evolved from a basic CRUD notes API into an AI-enhanced backend system featuring:
+---
 
-* persistent PostgreSQL storage
-* authenticated note ownership
-* AI-generated summaries
-* AI-powered auto-tagging
-* resiliency patterns
-* retry logic with exponential backoff
-* caching layers for performance optimization
+# Overview
+
+This project evolved across three stages:
+
+| Day   | Focus                                                         |
+| ----- | ------------------------------------------------------------- |
+| Day 1 | REST fundamentals, semantic HTTP status codes, in-memory CRUD |
+| Day 2 | PostgreSQL persistence, JWT auth, bcrypt hashing              |
+| Day 3 | Groq AI integration, caching, resiliency, fault tolerance     |
+
+The Day 3 layer introduces AI-powered note summarization and auto-tag generation with retry logic, graceful degradation, and multi-level caching to reduce latency and API cost.
 
 ---
 
 # Features
 
-## Core API
+## Core API Features
 
 * Full CRUD operations on notes
 * PostgreSQL database persistence
-* JWT authentication with protected routes
-* Note ownership authorization
+* User registration and login
+* JWT-protected routes
+* bcrypt password hashing
+* Ownership-based authorization
 * Pagination and sorting
-* Semantic HTTP status codes
+* Centralized error handling
 * Modular MVC architecture
+* Semantic HTTP status codes
 
----
+## AI Features
 
-## AI Features (Groq Integration)
-
-* AI-generated summaries using Groq API
-* Auto-tag generation using LLM analysis
-* Summary caching in PostgreSQL
-* In-memory caching using hashed note content
+* AI-generated summaries using Groq
+* Automatic note tagging
+* Database caching for generated AI output
+* SHA-256 in-memory cache
 * Retry logic with exponential backoff
-* Graceful handling of API failures, rate limits, and timeouts
+* Graceful AI failure handling
+* Reduced API credit consumption
 
 ---
 
 # Tech Stack
 
-## Backend
-
-* Node.js (v18+)
-* Express.js
-
-## Database
-
-* PostgreSQL
-
-## AI Integration
-
-* Groq API
-* llama-3.3-70b-versatile model
-
-## Authentication & Security
-
-* JWT (JSON Web Tokens)
-* bcrypt
-* dotenv
-
-## Utilities
-
-* crypto
-* pg
-* groq-sdk
+| Layer              | Technology                           |
+| ------------------ | ------------------------------------ |
+| Runtime            | Node.js (v18+)                       |
+| Framework          | Express.js                           |
+| Database           | PostgreSQL 18                        |
+| AI Integration     | Groq API (`llama-3.3-70b-versatile`) |
+| Authentication     | JWT (`jsonwebtoken`)                 |
+| Password Security  | bcryptjs                             |
+| Environment Config | dotenv                               |
+| Utilities          | pg, groq-sdk, crypto                 |
 
 ---
 
@@ -76,7 +67,7 @@ This project evolved from a basic CRUD notes API into an AI-enhanced backend sys
 ```txt
 .
 ├── config/
-│   └── groq.js                # Groq SDK configuration
+│   └── groq.js
 │
 ├── controllers/
 │   ├── auth_controller.js
@@ -87,43 +78,70 @@ This project evolved from a basic CRUD notes API into an AI-enhanced backend sys
 │   └── errorMiddleware.js
 │
 ├── models/
-│   ├── noteModel.js
-│   └── userModel.js
+│   ├── userModel.js
+│   └── noteModel.js
 │
 ├── routes/
 │   ├── auth_route.js
 │   └── notes_route.js
 │
 ├── db/
-│   └── database.js            # PostgreSQL connection
+│   └── database.js
 │
+├── server.js
 ├── .env
 ├── .env.example
 ├── package.json
-├── README.md
-└── server.js
+└── README.md
 ```
 
 ---
 
-# Setup
+# Database Schema
 
-## 1. Clone Repository
+## `profile` Table
+
+| Column    | Type         | Constraints      |
+| --------- | ------------ | ---------------- |
+| id        | SERIAL       | Primary Key      |
+| public_id | UUID         | Auto-generated   |
+| username  | VARCHAR(255) | Unique, NOT NULL |
+| password  | TEXT         | bcrypt hash      |
+
+---
+
+## `note` Table
+
+| Column     | Type        | Constraints        |
+| ---------- | ----------- | ------------------ |
+| id         | SERIAL      | Primary Key        |
+| public_id  | UUID        | Auto-generated     |
+| title      | TEXT        | NOT NULL           |
+| body       | TEXT        | Optional           |
+| summary    | TEXT        | AI-generated cache |
+| tags       | TEXT[]      | AI-generated cache |
+| created_at | TIMESTAMPTZ | Default NOW()      |
+| updated_at | TIMESTAMPTZ | Auto-updated       |
+| profile_id | UUID        | Foreign key        |
+
+The `summary` and `tags` columns act as the persistent database cache for AI-generated results.
+
+---
+
+# Quick Start
+
+## 1. Clone the Repository
 
 ```bash
 git clone <your-repo-url>
 cd <repo-folder>
 ```
 
----
-
 ## 2. Install Dependencies
 
 ```bash
 npm install
 ```
-
----
 
 ## 3. Configure Environment Variables
 
@@ -132,34 +150,39 @@ Create a `.env` file:
 ```env
 ACTIVE_PORT=8800
 
-DATABASE_URL=your_postgresql_connection_string
+DB_USER=postgres
+DB_HOST=localhost
+DB_NAME=notes_db
+DB_PASSWORD=your_postgres_password
+DB_PORT=5432
 
 JWT_SECRET=your_jwt_secret
 
 GROQ_API_KEY=your_groq_api_key
 ```
 
+> Never commit `.env` files to GitHub.
+
 ---
 
-## 4. Start Server
+## 4. Start the Server
 
 ```bash
-node server.js
+npm run dev
 ```
 
-Server runs on:
+Expected output:
 
 ```txt
-http://localhost:8800
+Database connected Successfully
+Server is ACTIVE🔥🔥 on http://localhost:8800
 ```
 
 ---
 
 # Authentication
 
-Protected routes require a JWT token.
-
-Example:
+Protected routes require a JWT:
 
 ```http
 Authorization: Bearer <token>
@@ -167,29 +190,87 @@ Authorization: Bearer <token>
 
 ---
 
-# AI Endpoints
+## Register User
 
-## Generate Note Summary
+### `POST /auth/register`
 
-```http
-GET /notes/:id/summary
+```json
+{
+  "username": "femiprecious",
+  "password": "supersecret123"
+}
 ```
 
-Generates an AI summary for a note using Groq.
+### Response — `201 Created`
 
-### Behavior
+```json
+{
+  "message": "Account Created Successfully"
+}
+```
 
-* Returns cached DB summary if available
-* Uses in-memory cache for duplicate content
-* Retries failed AI requests automatically
-* Gracefully handles API failures
+---
+
+## Login User
+
+### `POST /auth/login`
+
+```json
+{
+  "username": "femiprecious",
+  "password": "supersecret123"
+}
+```
+
+### Response — `200 OK`
+
+```json
+{
+  "token": "jwt-token"
+}
+```
+
+---
+
+# Notes Endpoints
+
+All `/notes` routes require authentication.
+
+| Method | Endpoint     | Description     |
+| ------ | ------------ | --------------- |
+| POST   | `/notes`     | Create note     |
+| GET    | `/notes`     | Get all notes   |
+| GET    | `/notes/:id` | Get single note |
+| PUT    | `/notes/:id` | Replace note    |
+| PATCH  | `/notes/:id` | Partial update  |
+| DELETE | `/notes/:id` | Delete note     |
+
+---
+
+## Pagination & Sorting
+
+Example:
+
+```http
+GET /notes?page=1&limit=10&sort=created_at
+```
+
+---
+
+# AI Endpoints
+
+## Generate Summary
+
+### `GET /notes/:id/summary`
+
+Uses Groq's `llama-3.3-70b-versatile` model to summarize note content.
 
 ### Response
 
 ```json
 {
-  "noteId": "123",
-  "summary": "This note explains JWT authentication in Express."
+  "noteId": "uuid",
+  "summary": "This note explains JWT authentication."
 }
 ```
 
@@ -197,32 +278,39 @@ Generates an AI summary for a note using Groq.
 
 ## Generate Tags
 
-```http
-GET /notes/:id/tags
-```
-
-Uses the LLM to analyze the note and suggest relevant tags.
+### `GET /notes/:id/tags`
 
 ### Response
 
 ```json
 {
-  "tags": [
-    "jwt",
-    "authentication",
-    "express",
-    "backend"
-  ]
+  "tags": ["jwt", "authentication", "express"]
 }
 ```
 
 ---
 
-# Resiliency & Optimization
+# AI Caching Flow
 
-## Retry Logic
+```txt
+Request
+  ↓
+Database Cache
+  ↓
+In-Memory Cache
+  ↓
+Groq API
+  ↓
+Store Result
+  ↓
+Response
+```
 
-Outgoing Groq API requests implement exponential backoff retries:
+---
+
+# Resiliency Strategy
+
+## Exponential Backoff
 
 ```txt
 Retry 1 → 1 second
@@ -230,27 +318,18 @@ Retry 2 → 2 seconds
 Retry 3 → 4 seconds
 ```
 
----
-
-## In-Memory Cache
-
-Generated summaries are cached using a SHA-256 hash of note content to prevent duplicate AI requests.
-
----
-
-## Database Caching
-
-AI-generated summaries and tags are stored directly on the note model to minimize API usage and reduce latency.
+External AI services are treated as unreliable network dependencies. Failed requests retry automatically and degrade gracefully instead of crashing the application.
 
 ---
 
 # Security
 
-* No hardcoded secrets
-* Environment variable configuration only
 * JWT-protected routes
-* Note ownership validation
-* Centralized error handling
+* bcrypt password hashing
+* Ownership-based authorization
+* Environment variable secrets management
+* No raw stack traces exposed
+* `.env` excluded from version control
 
 ---
 
@@ -260,12 +339,13 @@ AI-generated summaries and tags are stored directly on the note model to minimiz
 | ---- | --------------------- |
 | 200  | Successful request    |
 | 201  | Resource created      |
-| 204  | Resource deleted      |
+| 204  | Successful deletion   |
 | 400  | Bad request           |
 | 401  | Unauthorized          |
 | 403  | Forbidden             |
 | 404  | Resource not found    |
-| 429  | Rate limit exceeded   |
+| 409  | Conflict              |
+| 429  | Too many requests     |
 | 500  | Internal server error |
 
 ---
@@ -273,16 +353,17 @@ AI-generated summaries and tags are stored directly on the note model to minimiz
 # Future Improvements
 
 * Redis distributed caching
-* Background AI job queues
-* Streaming AI responses
 * Docker deployment
-* Rate limiting middleware
-* Unit and integration testing
-* Swagger/OpenAPI documentation
+* Swagger/OpenAPI docs
+* Background job queues
+* Streaming AI responses
+* Unit and integration tests
+* Dedicated rate limiting
 
 ---
 
 # Author
 
-Built by Femi Oyetade
-IEEE × GitHub Campus Experts Codeathon Day 3 - Backend Track
+Built by **Femi Oyetade**
+
+IEEE × GitHub Campus Experts Codeathon — Backend Track

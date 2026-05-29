@@ -1,4 +1,7 @@
-const { createNoteDB, getNoteIdDB, sortNote, replaceNoteDB, updateNoteDB, deleteNoteDB, getSortNote } = require("../models/note_model")
+const crypto = require("crypto")
+
+const { createNoteDB, getNoteIdDB, sortNote, replaceNoteDB, updateNoteDB, deleteNoteDB, getSortNote, storeSummary, getSummary, getTags, storeTags } = require("../models/note_model")
+const { generateFromGroq } = require("../utils/groq_util")
 
 
 const addNote = async (req,res)=>{
@@ -89,15 +92,31 @@ const updateNote = async (req,res)=>{
  res.status(200).json(note)
 }
 
+const summaryCache = new Map()
+
 const summarizeNote = async (req,res)=>{
   try{
     const id = req.params.id
+    const cachedsummary = await getSummary(id)
+    if(cachedsummary){
+      return res.status(200).json({
+        noteId: id,
+        summary: cachedsummary,
+        source: "cache"
+      })
+    }
     const note = await getNoteIdDB(id)
     if(!note){
       return res.status(404).send("Note Id not found")
     }
-    const completion = await groq.chat.completions.create({
-      messages:[
+    const hash = crypto.createHash("sha256").update(note.body).digest("hex")
+    if (summaryCache.has(hash)) {
+      const summary = summaryCache.get(hash)
+      await storeSummary(id, summary) 
+      return res.status(200).json({ noteId: id, summary, source: "memory" })
+    }
+
+    const completion = await generateFromGroq([
         {
           role: "system",
           content: "You are a helpful assistant that summarize notes"
@@ -106,18 +125,66 @@ const summarizeNote = async (req,res)=>{
           role: "user",
           content: `Summarize this note:\n\nTitle: ${note.title}\n\nBody: ${note.body}`
         }
-      ],
-      model: process.env.MODEL
-    })
+      ])
     const summary = completion.choices[0].message.content
-    res.status(200).json({
+    summaryCache.set(hash, summary)
+    await storeSummary(id,summary)
+    return res.status(200).json({
       noteId: id,
-      summary
+      summary,
+      source: "groq"
     })
   }catch (error) {
     console.error(error)
-    res.status(500).json({
-      message: "Failed to generate summary"
+    if(error.status === 429){
+      return res.status(429).send("Too many Request")
+    }
+    return res.status(500).json({
+      message: "Failed to generate summary",
+    })
+  }
+}
+
+const createTags = async(req,res)=>{
+  try{
+    const id = req.params.id
+    const cachedTags = await getTags(id)
+    if(cachedTags){
+      return res.status(200).json({
+        noteId: id,
+        tags: cachedTags
+      })
+    }
+    const note = await getNoteIdDB(id)
+    if(!note){
+      return res.status(404).send("Note Id not found")
+    }
+    const completion = await generateFromGroq([
+      {role:"system", content: "You are a helpful assistant that generate tags from notes"},
+      {role:"user", content:  `Suggest 5 relevant tags for this note. Return ONLY a JSON array. Title: ${note.title} Body: ${note.body}`}
+    ])
+    const raw = completion.choices[0].message.content
+    let tags
+    try {
+      const cleaned = raw.replace(/```json|```/g, "").trim()
+      tags = JSON.parse(cleaned)
+      if (!Array.isArray(tags)) throw new Error("Not an array")
+    } catch (parseErr) {
+      console.error("LLM returned bad JSON:", raw)
+      return res.status(500).json({ message: "AI returned invalid tag format" })
+    }
+    await storeTags(id,tags)
+    return res.status(200).json({
+      noteId: id,
+      tags
+    })
+  }catch(err){
+    console.log(err)
+    if(err.status === 429){
+      return res.status(429).send("Too many Request from the Backend")
+    }
+    return res.status(500).json({
+      message:"Failed to generate Tags"
     })
   }
 }
@@ -132,4 +199,4 @@ const delNote = async (req,res)=>{
 }
 
 
-module.exports = {getNote,addNote,getNoteId,replaceNote, updateNote, delNote, getAllNote, summarizeNote}
+module.exports = {getNote,addNote,getNoteId,replaceNote, updateNote, delNote, getAllNote, summarizeNote, createTags}
